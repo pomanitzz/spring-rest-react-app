@@ -2,8 +2,8 @@
 
 Technologies:
 
-1. SpringBoot
-2. SpringRest
+1. Spring Boot
+2. Spring REST
 3. React (Redux)
 4. DB: H2 (in runtime)
 
