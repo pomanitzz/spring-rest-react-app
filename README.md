@@ -7,6 +7,7 @@ Technologies:
 3. React (Redux)
 4. DB: H2 (in runtime)
 5. Spring WebSocket & SockJS
+6. Spring Security
 
 How to run:
 - Clone project
@@ -21,6 +22,7 @@ How to run:
                                                                                                                                                                
 on the command line. (mvnw.bat for Windows users).
 
+Can login under: anton / 12345
 
 
 

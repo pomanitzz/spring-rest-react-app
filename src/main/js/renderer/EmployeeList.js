@@ -44,12 +44,16 @@ export default class EmployeeList extends React.Component {
     }
 
     render() {
+        const pageInfo = this.props.page.hasOwnProperty("number") ?
+            <h3>Employees - Page {this.props.page.number + 1} of {this.props.page.totalPages}</h3> : null;
+
         const employees = this.props.employees.map(employee =>
             <Employee key={employee.entity._links.self.href}
                       employee={employee}
                       attributes={this.props.attributes}
                       onUpdate={this.props.onUpdate}
-                      onDelete={this.props.onDelete}/>
+                      onDelete={this.props.onDelete}
+                      loggedInManager={this.props.loggedInManager}/>
         );
 
         const navLinks = [];
@@ -68,6 +72,7 @@ export default class EmployeeList extends React.Component {
 
         return (
             <div>
+                {pageInfo}
                 <input ref="pageSize" defaultValue={this.props.pageSize} onInput={this.handleInput}/>
                 <table>
                     <tbody>
@@ -75,6 +80,7 @@ export default class EmployeeList extends React.Component {
                         <th>First Name</th>
                         <th>Last Name</th>
                         <th>Description</th>
+                        <th>Manager</th>
                         <th />
                         <th />
                     </tr>
