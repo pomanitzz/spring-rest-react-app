@@ -7,7 +7,7 @@ const React = require('react');
 const ReactDOM = require('react-dom');
 const when = require('when');
 const client = require('./client');
-
+const stompClient = require('./websocket-listener')
 const follow = require('./follow'); // function to hop multiple links by "rel"
 
 const root = '/api';
@@ -16,19 +16,20 @@ class App extends React.Component {
 
     constructor(props) {
         super(props);
-        this.state = {employees: [], attributes: [], pageSize: 2, links: {}};
+        this.state = {employees: [], attributes: [], page: 1, pageSize: 2, links: {}};
         this.updatePageSize = this.updatePageSize.bind(this);
         this.onCreate = this.onCreate.bind(this);
         this.onUpdate = this.onUpdate.bind(this);
         this.onDelete = this.onDelete.bind(this);
         this.onNavigate = this.onNavigate.bind(this);
+        this.refreshCurrentPage = this.refreshCurrentPage.bind(this);
+        this.refreshAndGoToLastPage = this.refreshAndGoToLastPage.bind(this);
     }
 
-    // tag::follow-2[]
     loadFromServer(pageSize) {
-        follow(client, root, [ // <1>
+        follow(client, root, [
             {rel: 'employees', params: {size: pageSize}}]
-        ).then(employeeCollection => { // <2>
+        ).then(employeeCollection => {
             return client({
                 method: 'GET',
                 path: employeeCollection.entity._links.profile.href,
@@ -38,16 +39,16 @@ class App extends React.Component {
                 this.links = employeeCollection.entity._links;
                 return employeeCollection;
             });
-        }).then(employeeCollection => { // <3>
+        }).then(employeeCollection => {
             return employeeCollection.entity._embedded.employees.map(employee =>
                 client({
                     method: 'GET',
                     path: employee._links.self.href
                 })
             );
-        }).then(employeePromises => { // <4>
+        }).then(employeePromises => {
             return when.all(employeePromises);
-        }).done(employees => { // <5>
+        }).done(employees => {
             this.setState({
                 employees: employees,
                 attributes: Object.keys(this.schema.properties),
@@ -56,31 +57,18 @@ class App extends React.Component {
             });
         });
     }
-    // end::follow-2[]
 
-    // tag::create[]
     onCreate(newEmployee) {
-        const self = this;
-        follow(client, root, ['employees']).then(response => {
-            return client({
+        follow(client, root, ['employees']).done(response => {
+            client({
                 method: 'POST',
                 path: response.entity._links.self.href,
                 entity: newEmployee,
                 headers: {'Content-Type': 'application/json'}
             })
-        }).then(response => {
-            return follow(client, root, [{rel: 'employees', params: {'size': self.state.pageSize}}]);
-        }).done(response => {
-            if (typeof response.entity._links.last !== "undefined") {
-                this.onNavigate(response.entity._links.last.href);
-            } else {
-                this.onNavigate(response.entity._links.self.href);
-            }
-        });
+        })
     }
-    // end::create[]
 
-    // tag::update[]
     onUpdate(employee, updatedEmployee) {
         client({
             method: 'PUT',
@@ -91,7 +79,7 @@ class App extends React.Component {
                 'If-Match': employee.headers.Etag
             }
         }).done(response => {
-            this.loadFromServer(this.state.pageSize);
+            /* Let the websocket handler update the state */
         }, response => {
             if (response.status.code === 412) {
                 alert('DENIED: Unable to update ' +
@@ -99,17 +87,11 @@ class App extends React.Component {
             }
         });
     }
-    // end::update[]
 
-    // tag::delete[]
     onDelete(employee) {
-        client({method: 'DELETE', path: employee.entity._links.self.href}).done(response => {
-            this.loadFromServer(this.state.pageSize);
-        });
+        client({method: 'DELETE', path: employee.entity._links.self.href});
     }
-    // end::delete[]
 
-    // tag::navigate[]
     onNavigate(navUri) {
         client({
             method: 'GET',
@@ -134,21 +116,65 @@ class App extends React.Component {
             });
         });
     }
-    // end::navigate[]
 
-    // tag::update-page-size[]
     updatePageSize(pageSize) {
         if (pageSize !== this.state.pageSize) {
             this.loadFromServer(pageSize);
         }
     }
-    // end::update-page-size[]
 
-    // tag::follow-1[]
     componentDidMount() {
         this.loadFromServer(this.state.pageSize);
+        stompClient.register([
+            {route: '/topic/newEmployee', callback: this.refreshAndGoToLastPage},
+            {route: '/topic/updateEmployee', callback: this.refreshCurrentPage},
+            {route: '/topic/deleteEmployee', callback: this.refreshCurrentPage}
+        ]);
     }
-    // end::follow-1[]
+
+    refreshAndGoToLastPage(message) {
+        console.log(this)
+        follow(client, root, [{
+            rel: 'employees',
+            params: {size: this.state.pageSize}
+        }]).done(response => {
+            if (response.entity._links.last !== undefined) {
+                this.onNavigate(response.entity._links.last.href);
+            } else {
+                this.onNavigate(response.entity._links.self.href);
+            }
+        })
+    }
+
+    refreshCurrentPage(message) {
+        follow(client, root, [{
+            rel: 'employees',
+            params: {
+                size: this.state.pageSize,
+                page: this.state.page.number
+            }
+        }]).then(employeeCollection => {
+            this.links = employeeCollection.entity._links;
+            this.page = employeeCollection.entity.page;
+
+            return employeeCollection.entity._embedded.employees.map(employee => {
+                return client({
+                    method: 'GET',
+                    path: employee._links.self.href
+                })
+            });
+        }).then(employeePromises => {
+            return when.all(employeePromises);
+        }).then(employees => {
+            this.setState({
+                page: this.page,
+                employees: employees,
+                attributes: Object.keys(this.schema.properties),
+                pageSize: this.state.pageSize,
+                links: this.links
+            });
+        });
+    }
 
     render() {
         return (
@@ -156,6 +182,7 @@ class App extends React.Component {
                 <CreateDialog attributes={this.state.attributes} onCreate={this.onCreate}/>
                 <EmployeeList employees={this.state.employees}
                               links={this.state.links}
+                              page={this.state.page}
                               pageSize={this.state.pageSize}
                               attributes={this.state.attributes}
                               onNavigate={this.onNavigate}

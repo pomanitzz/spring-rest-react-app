@@ -2,10 +2,11 @@
 
 Technologies:
 
-1. Spring Boot
+1. Spring Boot 2
 2. Spring REST
 3. React (Redux)
 4. DB: H2 (in runtime)
+5. Spring WebSocket & SockJS
 
 How to run:
 - Clone project
